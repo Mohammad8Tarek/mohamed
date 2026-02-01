@@ -1,12 +1,13 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, Role } from '../types';
-import { logActivity } from '../services/apiService';
+import { AuthService } from '../services/auth.service';
+import { logActivity } from '../services/apiService'; // Assuming logActivity remains in apiService
 
 interface AuthContextType {
   user: User | null;
   role: Role | null;
-  login: (user: User, role: Role, token: string, rememberMe: boolean) => void;
+  login: (username: string, password: string, rememberMe: boolean) => Promise<void>;
   logout: () => void;
   loading: boolean;
   token: string | null;
@@ -21,46 +22,87 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let storedUser: string | null = null;
-    let storedRole: string | null = null;
-    let storedToken: string | null = null;
-    
-    storedUser = localStorage.getItem('user') || sessionStorage.getItem('user');
-    storedRole = localStorage.getItem('role') || sessionStorage.getItem('role');
-    storedToken = localStorage.getItem('token') || sessionStorage.getItem('token');
+    const initAuth = async () => {
+      setLoading(true);
+      const storedToken = AuthService.getToken();
+      
+      if (storedToken) {
+        const { user: storedUser, role: storedRole } = AuthService.getUserAndRole();
 
-    if (storedUser && storedToken && storedRole) {
-      try {
-        setUser(JSON.parse(storedUser));
-        setRole(JSON.parse(storedRole));
-        setToken(storedToken);
-      } catch (error) {
-        console.error("Failed to parse session from storage");
-        sessionStorage.clear();
-        localStorage.clear();
+        if (storedUser && storedRole && AuthService.validateToken(storedToken)) {
+          // Attempt to fetch fresh user data from backend using token
+          // This simulates a 'me' endpoint to get up-to-date user/role info
+          try {
+            const response = await fetch('/api/auth/me', { // Placeholder: this endpoint would typically be handled by a real backend
+              headers: { 'Authorization': `Bearer ${storedToken}` }
+            });
+            
+            if (response.ok) {
+              const { user: fetchedUser, role: fetchedRole } = await response.json();
+              setUser(fetchedUser);
+              setRole(fetchedRole);
+              setToken(storedToken);
+            } else {
+              // Token might be valid but backend session invalid or user changed
+              AuthService.logout();
+              setUser(null);
+              setRole(null);
+              setToken(null);
+            }
+          } catch (error) {
+            console.error("Session restoration (AuthService.initAuth) failed:", error);
+            AuthService.logout();
+            setUser(null);
+            setRole(null);
+            setToken(null);
+          }
+        } else {
+          // Token expired or data corrupted, force logout
+          AuthService.logout();
+          setUser(null);
+          setRole(null);
+          setToken(null);
+        }
       }
-    }
-    setLoading(false);
-  }, []);
-
-  const login = (userData: User, roleData: Role, token: string, rememberMe: boolean) => {
-    const storage = rememberMe ? localStorage : sessionStorage;
-    storage.setItem('user', JSON.stringify(userData));
-    storage.setItem('role', JSON.stringify(roleData));
-    storage.setItem('token', token);
+      setLoading(false);
+    };
     
-    setUser(userData);
-    setRole(roleData);
-    setToken(token);
-    logActivity(userData.username, 'User Authenticated', { module: 'auth', actionType: 'LOGIN' });
+    initAuth();
+  }, []); // Run only once on mount
+
+  const login = async (username: string, password: string, rememberMe: boolean) => {
+    try {
+      const { user: loggedInUser, role: loggedInRole, token: accessToken } = await AuthService.login(username, password, rememberMe);
+      
+      setUser(loggedInUser);
+      setRole(loggedInRole);
+      setToken(accessToken);
+      
+      // Log activity after successful login
+      await logActivity(loggedInUser.username, 'User Authenticated', { 
+        module: 'auth', 
+        actionType: 'LOGIN',
+        userId: loggedInUser.id,
+        userRole: loggedInRole.name
+      });
+    } catch (error) {
+      console.error("Login failed:", error);
+      throw error; // Re-throw to be caught by LoginPage for error display
+    }
   };
 
   const logout = () => {
-    if(user) {
-      logActivity(user.username, 'Session Terminated', { module: 'auth', actionType: 'LOGOUT' });
+    if (user) {
+      // Log activity before clearing session
+      logActivity(user.username, 'Session Terminated', { 
+        module: 'auth', 
+        actionType: 'LOGOUT',
+        userId: user.id,
+        userRole: role?.name
+      });
     }
-    sessionStorage.clear();
-    localStorage.clear();
+    
+    AuthService.logout();
     setUser(null);
     setRole(null);
     setToken(null);

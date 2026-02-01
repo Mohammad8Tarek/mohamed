@@ -7,10 +7,11 @@ import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../context/LanguageContext';
 import { useToast } from '../context/ToastContext';
 import { useSettings } from '../context/SettingsContext';
-import { usePermissions } from '../hooks/usePermissions';
 import { downloadEmployeeTemplate } from '../services/exportService';
 import * as XLSX from 'xlsx';
 import { useProperty } from '../context/PropertyContext';
+// FIX: Imported usePermissions hook
+import { usePermissions } from '../hooks/usePermissions';
 
 type EmployeeKey = keyof Employee;
 
@@ -305,6 +306,9 @@ const EmployeesPage: React.FC = () => {
 
     const openAddModal = () => {
         const firstDept = combinedDepartments[0] || 'reception';
+        const firstJobTitle = getJobTitlesForDept(firstDept)[0] || '';
+        const firstWorkLocation = workLocations[0] || '';
+
         setEditingEmployee(null);
         setFormData({ 
             employeeId: '', 
@@ -312,11 +316,11 @@ const EmployeesPage: React.FC = () => {
             firstName: '', 
             lastName: '', 
             nationalId: '', 
-            jobTitle: getJobTitlesForDept(firstDept)[0] || '', 
+            jobTitle: firstJobTitle, 
             level: '',
             phone: '', 
             department: firstDept, 
-            workLocation: workLocations[0] || '',
+            workLocation: firstWorkLocation,
             address: '',
             dateOfBirth: '',
             status: 'active', 
@@ -342,7 +346,8 @@ const EmployeesPage: React.FC = () => {
             profileImage: employee.profileImage || null,
             idImage: employee.idImage || null, 
             level: employee.level || '', 
-            gender: employee.gender || 'male' 
+            gender: employee.gender || 'male', // Default to 'male' if undefined
+            workLocation: employee.workLocation || workLocations[0] || '', // Ensure workLocation has a value
         });
         setIsModalOpen(true);
     };
@@ -380,7 +385,11 @@ const EmployeesPage: React.FC = () => {
                 ...formData, 
                 employeeId: finalEmployeeId,
                 contractStartDate: formData.contractStartDate ? new Date(formData.contractStartDate).toISOString() : '',
-                dateOfBirth: formData.dateOfBirth ? new Date(formData.dateOfBirth).toISOString() : ''
+                dateOfBirth: formData.dateOfBirth ? new Date(formData.dateOfBirth).toISOString() : '',
+                // Ensure gender has a default value if not selected
+                gender: formData.gender || 'male',
+                // Ensure workLocation has a value
+                workLocation: formData.workLocation || workLocations[0] || '',
             };
             
             let oldValues = '';

@@ -1,5 +1,6 @@
 
 import { User, Building, Floor, Room, Employee, Assignment, MaintenanceRequest, ActivityLog, Reservation, Hosting, OccupancyReportRow, EmployeeHousingReportRow, AppSettings, DEFAULT_SETTINGS, Property, AVAILABLE_MODULES, LogSeverity, LogActionType, ModuleType, Role, SystemPermission, UserPermissionOverride } from '../types';
+import { AuthService } from './auth.service'; // NEW: Import AuthService for login
 
 declare var initSqlJs: any;
 
@@ -260,7 +261,11 @@ export const initDb = () => {
 };
 
 export const authApi = {
+    // REMOVED old direct login logic and replaced with a placeholder
+    // The actual login will now happen via AuthService.login which performs a fetch to a backend.
     login: async (credentials: { username: string; password: string }): Promise<{ user: User; role: Role; token: string }> => {
+        // This is a simulation for frontend-only demo
+        // In a real app, this would be a direct fetch call to a backend authentication API.
         const results = await executeQuery(
             `SELECT u.*, r.name as roleName, r.permissions 
              FROM Users u 
@@ -293,7 +298,26 @@ export const authApi = {
         // Update last login
         await executeNonQuery(`UPDATE Users SET lastLoginAt = ? WHERE id = ?`, [new Date().toISOString(), user.id]);
 
-        return { user, role, token: 'session-' + Math.random().toString(36).substr(2) };
+        // For demo, generate a dummy token. In real app, this comes from backend.
+        // This token is not validated by the client in this *simulated* step,
+        // but it will be validated by AuthService.
+        const dummyToken = `dummy-jwt-${Math.random().toString(36).substr(2)}`;
+        // Assume backend also sends a refreshToken
+        const dummyRefreshToken = `dummy-refresh-${Math.random().toString(36).substr(2)}`;
+        
+        // This structure must match what AuthService.login expects to receive from the fetch response
+        return { user, role, token: dummyToken };
+    },
+    // NEW: Added a /api/auth/me placeholder for useAuth to fetch current user data
+    getMe: async (token: string): Promise<{user: User; role: Role}> => {
+        // This is a simulation. In a real app, this would involve validating the token
+        // on the backend and returning the user/role associated with it.
+        // For now, we'll try to retrieve from local storage (if available).
+        const { user, role } = AuthService.getUserAndRole();
+        if (user && role) {
+            return { user, role };
+        }
+        throw new Error("User data not found for token.");
     }
 };
 
@@ -418,13 +442,31 @@ export const userApi = {
         if (!data.username || !data.username.trim()) {
             throw new Error("Username is mandatory for identity provisioning.");
         }
+        // Exclude 'password' from direct stringify if it's hashed and handled elsewhere
+        // Assume password passed here is already hashed or handled by backend, not frontend hashing.
+        const { password, ...restData } = data;
+        
         const exclude = ['roles', 'authorizedProperties', 'overrides', 'propertyId', 'id'];
-        const keys = Object.keys(data).filter(k => !exclude.includes(k));
-        const values = keys.map(k => (data as any)[k]);
+        const keys = Object.keys(restData).filter(k => !exclude.includes(k));
+        const values = keys.map(k => (restData as any)[k]);
         const placeholders = keys.map(() => '?').join(', ');
         const targetPropertyId = data.propertyId || ACTIVE_PROPERTY_ID;
         
-        await executeNonQuery(`INSERT INTO Users (${keys.join(', ')}, roles, propertyId) VALUES (${placeholders}, ?, ?)`, [...values, '[]', targetPropertyId]);
+        let sql = `INSERT INTO Users (${keys.join(', ')}`;
+        let sqlValues = values;
+
+        if (password) {
+            sql += `, password`;
+            sqlValues.push(password);
+        }
+        sql += `, roles, propertyId) VALUES (${placeholders}`;
+        if (password) {
+            sql += `, ?`; // Placeholder for password
+        }
+        sql += `, ?, ?)`; // Placeholders for roles and propertyId
+
+        await executeNonQuery(sql, [...sqlValues, '[]', targetPropertyId]);
+
         const results = await executeQuery(`SELECT * FROM Users WHERE id = last_insert_rowid()`);
         const newUser = results[0];
         await executeNonQuery(`INSERT INTO UserProperties (userId, propertyId, isDefault) VALUES (?, ?, 1)`, [newUser.id, targetPropertyId]);
@@ -468,11 +510,16 @@ export const activityLogApi = {
 
 export const logActivity = async (username: string, action: string, options: any = {}): Promise<ActivityLog> => {
     const timestamp = new Date().toISOString();
-    const { userId, userRole, actionType = 'UPDATE', module = 'system', severity = 'info', oldValues, newValues } = options;
+    // Default userId and userRole from AuthService if not provided
+    const { user: authUser, role: authRole } = AuthService.getUserAndRole();
+    const userId = options.userId || authUser?.id || null;
+    const userRole = options.userRole || authRole?.name || null;
+
+    const { actionType = 'UPDATE', module = 'system', severity = 'info', oldValues, newValues } = options;
     await executeNonQuery(
         `INSERT INTO ActivityLog (propertyId, username, userId, userRole, action, actionType, module, severity, timestamp, oldValues, newValues) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
-        [ACTIVE_PROPERTY_ID, username, userId || null, userRole || null, action, actionType, module, severity, timestamp, oldValues || null, newValues || null]
+        [ACTIVE_PROPERTY_ID, username, userId, userRole, action, actionType, module, severity, timestamp, oldValues || null, newValues || null]
     );
     window.dispatchEvent(new CustomEvent('datachanged', { detail: { table: 'ActivityLog' } }));
     const newLog = await executeQuery(`SELECT * FROM ActivityLog WHERE rowid = last_insert_rowid()`);
@@ -494,7 +541,8 @@ export const propertyApi = {
         const propResults = await executeQuery(`SELECT id FROM Properties WHERE code = ?`, [code]);
         const propId = propResults[0].id;
         if (adminUsername && adminPassword) {
-            await executeNonQuery(`INSERT INTO Users (username, fullName, password, roleId, status, propertyId, createdAt, roles) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), '["admin"])'`, [adminUsername, 'Property Admin', adminPassword, 2, 'active', propId]); // Assign role 2 (Admin)
+            // Assume adminPassword is already hashed or will be handled by AuthService
+            await executeNonQuery(`INSERT INTO Users (username, fullName, password, roleId, status, propertyId, createdAt, roles) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), '["admin"]')`, [adminUsername, 'Property Admin', adminPassword, 2, 'active', propId]); // Assign role 2 (Admin)
             const userRes = await executeQuery(`SELECT id FROM Users WHERE username = ?`, [adminUsername]);
             await executeNonQuery(`INSERT INTO UserProperties (userId, propertyId, isDefault) VALUES (?, ?, 1)`, [userRes[0].id, propId]);
         }

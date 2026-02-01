@@ -6,20 +6,20 @@ import Layout from './pages/Layout';
 import DashboardPage from './pages/DashboardPage';
 import BuildingsAndRoomsPage from './pages/BuildingsAndRoomsPage';
 import EmployeesPage from './pages/EmployeesPage';
-import ReservationsPage from './pages/AssignmentsPage'; // FIX: Changed import to match default export from file
+import ReservationsPage from './pages/AssignmentsPage';
 import MaintenancePage from './pages/MaintenancePage';
-import UsersPage from './pages/UsersPage';
+import UsersPage from './pages/Users'; // NEW: Updated import path
 import ActivityLogPage from './pages/ActivityLogPage';
 import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
-import PropertiesPage from './pages/PropertiesPage'; // NEW
+import PropertiesPage from './pages/PropertiesPage';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { LanguageProvider } from './context/LanguageContext';
 import { ToastProvider } from './context/ToastContext';
 import { initDb } from './services/apiService';
 import { ExportSettingsProvider } from './context/ExportSettingsContext';
 import { SettingsProvider } from './context/SettingsContext';
-import { PropertyProvider } from './context/PropertyContext'; // NEW
+import { PropertyProvider } from './context/PropertyContext';
 
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();

@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { authApi, resetDatabase } from '../services/apiService';
 import { useLanguage } from '../context/LanguageContext';
 import { User, Role } from '../types'; // Import Role type
+import { AuthService } from '../services/auth.service'; // NEW: Import AuthService
 
 type LoginApiFunction = (credentials: { username: string; password: string; }) => Promise<{ user: User; role: Role; token: string }>;
 
@@ -15,7 +16,7 @@ const LoginPage: React.FC = () => {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [failCount, setFailCount] = useState(0);
-    const { login } = useAuth();
+    const { login } = useAuth(); // Use the login function from AuthContext
     const { language, t } = useLanguage();
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -30,11 +31,8 @@ const LoginPage: React.FC = () => {
         }
 
         try {
-            // Clear any old property context to avoid being locked into a wrong property
-            sessionStorage.removeItem('activePropertyId');
-            
-            const { user, role, token } = await (authApi.login as LoginApiFunction)({ username, password });
-            login(user, role, token, rememberMe);
+            // NEW: Use AuthService.login which handles API call and token storage
+            await login(username, password, rememberMe); // The login function from useAuth now handles everything
         } catch (err: any) {
             setError(err.message || t('login.invalidCredentials'));
             setFailCount(p => p + 1);

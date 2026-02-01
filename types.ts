@@ -74,6 +74,12 @@ export interface UserPermissionOverride {
     isAllowed: boolean; // true = Forced Grant, false = Forced Deny
 }
 
+// NEW: Temporary type for UI state management of permission overrides, especially for new users
+export interface TempPermissionOverride extends Omit<UserPermissionOverride, 'userId'> {
+  userId?: number; // Optional for new users, will be filled upon user creation
+  tempId?: string; // Temporary ID for UI tracking before a real userId is available
+}
+
 export interface User {
     id: number;
     propertyId: number; // Primary/Default Property
